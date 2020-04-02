@@ -5,9 +5,8 @@
 //  Copyright 2007 ridiculous_fish. All rights reserved.
 //
 
-#import <HexFiend/HFControllerCoalescedUndo.h>
+#import "HFControllerCoalescedUndo.h"
 #import <HexFiend/HFFullMemoryByteArray.h>
-#import <objc/objc-auto.h>
 
 /* Invariant for this class: actionPoint >= anchorPoint
  
@@ -19,7 +18,7 @@
 
 - (instancetype)initWithReplacedData:(HFByteArray *)replacedData atAnchorLocation:(unsigned long long)anchor {
     self = [super init];
-    deletedData = [replacedData retain];
+    deletedData = replacedData;
     byteArrayWasCopied = NO;
     anchorPoint = anchor;
     actionPoint = anchor;
@@ -29,7 +28,7 @@
 - (instancetype)initWithOverwrittenData:(HFByteArray *)overwrittenData atAnchorLocation:(unsigned long long)anchor {
     self = [super init];
     HFASSERT([overwrittenData length] > 0);
-    deletedData = [overwrittenData retain];
+    deletedData = overwrittenData;
     byteArrayWasCopied = NO;
     anchorPoint = anchor;
     actionPoint = HFSum(anchor, [overwrittenData length]);
@@ -55,9 +54,7 @@
 - (void)_copyByteArray {
     HFASSERT(deletedData != nil);
     HFASSERT(byteArrayWasCopied == NO);
-    HFByteArray *oldDeletedData = deletedData;
     deletedData = [deletedData mutableCopy];
-    [oldDeletedData release];
     byteArrayWasCopied = YES;
 }
 
@@ -76,7 +73,7 @@
     
     if (deletedData == nil) {
         HFASSERT(newlyOverwrittenData != nil);
-        deletedData = [newlyOverwrittenData retain];
+        deletedData = newlyOverwrittenData;
         byteArrayWasCopied = YES; //since we made a subarray, we own it
     }
     else if (newlyOverwrittenData != nil) { // we may have worked entirely within our previously overwritten data and thus have no newly overwritten data
@@ -116,7 +113,7 @@
         
         /* Instantiate deletedData if it's nil, or copy it if it's not nil and we need to */
         if (deletedData == nil) {
-            deletedData = [additionalDataToSave retain];
+            deletedData = additionalDataToSave;
             byteArrayWasCopied = YES;
         }
         else {
@@ -154,7 +151,7 @@
     }
     HFControllerCoalescedUndo *result = [[[self class] alloc] initWithReplacedData:invertedDeletedData atAnchorLocation:anchorPoint];
     if (deletedData) [result appendDataOfLength:[deletedData length]];
-    return [result autorelease];
+    return result;
 }
 
 - (BOOL)clearDependenciesOnRanges:(NSArray *)ranges inFile:(HFFileReference *)reference hint:(NSMutableDictionary *)hint {
@@ -163,14 +160,7 @@
 }
 
 - (void)invalidate {
-    [deletedData release];
     deletedData = nil;
-}
-
-
-- (void)dealloc {
-    [deletedData release];
-    [super dealloc];
 }
 
 @end
@@ -178,12 +168,12 @@
 
 @implementation HFControllerMultiRangeUndo
 
-- (instancetype)initForInsertingByteArrays:(NSArray *)arrays inRanges:(NSArray *)ranges withSelectionAction:(int)action {
+- (instancetype)initForInsertingByteArrays:(NSArray *)arrays inRanges:(NSArray *)ranges withSelectionAction:(HFControllerSelectAction)action {
     REQUIRE_NOT_NULL(arrays);
     REQUIRE_NOT_NULL(ranges);
     self = [super init];
-    self->byteArrays = [arrays retain];
-    self->replacementRanges = [ranges retain];
+    self->byteArrays = arrays;
+    self->replacementRanges = ranges;
     self->selectionAction = action;
     return self;
 
@@ -197,13 +187,13 @@
     return replacementRanges;
 }
 
-- (int)selectionAction {
+- (HFControllerSelectAction)selectionAction {
     return selectionAction;
 }
 
 - (BOOL)clearDependenciesOnRanges:(NSArray *)ranges inFile:(HFFileReference *)reference hint:(NSMutableDictionary *)hint {
     BOOL result = YES;
-    FOREACH(HFByteArray *, array, byteArrays) {
+    for(HFByteArray *array in byteArrays) {
         if (! [array clearDependenciesOnRanges:ranges inFile:reference hint:hint]) {
             result = NO;
             break;
@@ -213,16 +203,8 @@
 }
 
 - (void)invalidate {
-    [byteArrays release];
     byteArrays = nil;
-    [replacementRanges release];
     replacementRanges = nil;
-}
-
-- (void)dealloc {
-    [byteArrays release];
-    [replacementRanges release];
-    [super dealloc];
 }
 
 @end

@@ -7,11 +7,8 @@
 
 #import <HexFiend/HFRepresenterTextView.h>
 
+@interface HFRepresenterHexTextView : HFRepresenterTextView
 
-@interface HFRepresenterHexTextView : HFRepresenterTextView {
-    CGGlyph glyphTable[16];
-    CGFloat glyphAdvancement;
-    CGFloat spaceAdvancement;
-}
+@property(nonatomic) BOOL hidesNullBytes;
 
 @end

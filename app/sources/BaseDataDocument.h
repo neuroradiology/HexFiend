@@ -1,5 +1,5 @@
 //
-//  MyDocument.h
+//  BaseDocument.h
 //  HexFiend_2
 //
 //  Copyright 2007 ridiculous_fish. All rights reserved.
@@ -8,22 +8,27 @@
 #import <Cocoa/Cocoa.h>
 #import "DocumentWindow.h"
 
-@class HFByteArray, HFRepresenter, HFLineCountingRepresenter, HFLayoutRepresenter, HFDocumentOperationView, DataInspectorRepresenter;
+@class HFByteArray, HFRepresenter, HFHexTextRepresenter, HFLineCountingRepresenter, HFLayoutRepresenter, HFDocumentOperationView, DataInspectorRepresenter;
+@class HFBinaryTemplateRepresenter;
+@class HFColumnRepresenter;
 
-NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
+extern NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
 
 @interface BaseDataDocument : NSDocument <NSWindowDelegate, DragDropDelegate> {
-    IBOutlet NSSplitView *containerView;
+    IBOutlet NSView *containerView;
     HFController *controller;
     
+    HFColumnRepresenter *columnRepresenter;
     HFLineCountingRepresenter *lineCountingRepresenter;
-    HFRepresenter *hexRepresenter;
+    HFHexTextRepresenter *hexRepresenter;
     HFRepresenter *asciiRepresenter;
     HFRepresenter *scrollRepresenter;
     HFRepresenter *textDividerRepresenter;
     HFLayoutRepresenter *layoutRepresenter;
     DataInspectorRepresenter *dataInspectorRepresenter;
     HFStatusBarRepresenter *statusBarRepresenter;
+    HFBinaryTemplateRepresenter *binaryTemplateRepresenter;
+
     NSResponder *savedFirstResponder;
     
     HFDocumentOperationView *operationView;
@@ -36,14 +41,13 @@ NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
     
     BOOL bannerIsShown;
     BOOL bannerGrowing;
-    BOOL willRemoveBannerIfSufficientlyShortAfterDrag;
     NSView *bannerView;
-    NSView *bannerDividerThumb;
     NSTimer *bannerResizeTimer;
     CGFloat bannerTargetHeight;
     CFAbsoluteTime bannerStartTime;
     id targetFirstResponderInBanner;
-    SEL commandToRunAfterBannerIsDoneHiding;
+    dispatch_block_t commandToRunAfterBannerIsDoneHiding;
+    dispatch_block_t commandToRunAfterBannerPrepared;
     
     BOOL saveInProgress;
     
@@ -55,6 +59,8 @@ NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
     NSTimer *liveReloadTimer;
     
     NSUInteger cleanGenerationCount;
+
+    BOOL loadingWindow;
 }
 
 - (void)moveSelectionForwards:(NSMenuItem *)sender;
@@ -86,10 +92,13 @@ NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
 - (IBAction)setInsertMode:sender;
 - (IBAction)setReadOnlyMode:sender;
 - (IBAction)modifyByteGrouping:sender;
+- (IBAction)customByteGrouping:(id)sender;
+- (IBAction)setLineNumberFormat:(id)sender;
 
 - (IBAction)setBookmark:sender;
 - (IBAction)deleteBookmark:sender;
 
++ (HFByteArray *)byteArrayfromURL:(NSURL *)absoluteURL error:(NSError **)outError;
 - (HFByteArray *)byteArray; //accessed during diffing
 
 - (BOOL)isTransientAndCanBeReplaced; //like TextEdit
@@ -97,12 +106,12 @@ NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
 
 - (NSArray *)copyBookmarksMenuItems;
 
-- (HFDocumentOperationView *)newOperationViewForNibName:(NSString *)name displayName:(NSString *)displayName fixedHeight:(BOOL)fixedHeight;
+- (HFDocumentOperationView *)newOperationViewForNibName:(NSString *)name displayName:(NSString *)displayName;
 - (void)prepareBannerWithView:(HFDocumentOperationView *)newSubview withTargetFirstResponder:(id)targetFirstResponder;
-- (void)hideBannerFirstThenDo:(SEL)command;
+- (void)hideBannerFirstThenDo:(dispatch_block_t)command;
 - (NSArray *)runningOperationViews;
 
-@property (nonatomic) NSStringEncoding stringEncoding;
+@property (nonatomic) HFStringEncoding *stringEncoding;
 - (IBAction)setStringEncodingFromMenuItem:(NSMenuItem *)item;
 
 @property (nonatomic, getter=isTransient) BOOL transient;
@@ -114,5 +123,7 @@ NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
 
 @property (nonatomic) BOOL shouldLiveReload;
 - (IBAction)setLiveReloadFromMenuItem:sender;
+
+- (void)insertData:(NSData *)data;
 
 @end

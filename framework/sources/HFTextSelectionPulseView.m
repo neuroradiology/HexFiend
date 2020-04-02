@@ -12,23 +12,15 @@
 
 - (void)drawRect:(NSRect)rect {
     USE(rect);
-    CGContextSetInterpolationQuality([[NSGraphicsContext currentContext] graphicsPort], kCGInterpolationHigh);
-    [image drawInRect:[self bounds] fromRect:NSZeroRect operation:NSCompositeCopy fraction:(CGFloat)1.];
+    CGContextSetInterpolationQuality(HFGraphicsGetCurrentContext(), kCGInterpolationHigh);
+    [image drawInRect:[self bounds] fromRect:NSZeroRect operation:NSCompositingOperationCopy fraction:(CGFloat)1.];
 }
 
 - (void)setImage:(NSImage *)val {
     if (val != image) {
-        [val retain];
-        [image release];
         image = val;
     }
     [self setNeedsDisplay:YES];
-}
-
-- (void)dealloc
-{
-    [image release];
-    [super dealloc];
 }
 
 @end

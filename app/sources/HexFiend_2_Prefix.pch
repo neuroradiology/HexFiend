@@ -2,6 +2,8 @@
 // Prefix header for all source files of the 'HexFiend_2' target in the 'HexFiend_2' project
 //
 
+// Make sure we're compiled as ARC
+
 #ifdef __OBJC__
     #import <Cocoa/Cocoa.h>
     #import <HexFiend/HexFiend.h>
@@ -19,5 +21,3 @@
 
 /* Macro to specify functions and function parameters as unused. */
 #define UNUSED __attribute__((unused))
-
-#define FOREACH(type, var, exp) for (type var in (exp))

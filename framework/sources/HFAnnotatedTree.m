@@ -20,7 +20,9 @@ static void skew(HFAnnotatedTreeNode *node, HFAnnotatedTree *tree);
 static BOOL split(HFAnnotatedTreeNode *oldparent, HFAnnotatedTree *tree);
 static void rebalanceAfterLeafAdd(HFAnnotatedTreeNode *n, HFAnnotatedTree *tree);
 static void delete(HFAnnotatedTreeNode *n, HFAnnotatedTree *tree);
+#if ! NDEBUG
 static void verify_integrity(HFAnnotatedTreeNode *n);
+#endif
 
 static HFAnnotatedTreeNode *next_node(HFAnnotatedTreeNode *node);
 
@@ -31,7 +33,6 @@ static inline HFAnnotatedTreeNode *get_root(HFAnnotatedTree *tree);
 static inline HFAnnotatedTreeNode *create_root(void);
 static inline HFAnnotatedTreeAnnotaterFunction_t get_annotater(HFAnnotatedTree *tree);
 
-static void update_annotation(HFAnnotatedTreeNode *node, HFAnnotatedTree *tree);
 static void reannotate(HFAnnotatedTreeNode *node, HFAnnotatedTree *tree);
 
 static HFAnnotatedTreeNode *first_node(HFAnnotatedTreeNode *node);
@@ -49,11 +50,6 @@ static HFAnnotatedTreeNode *right_child(HFAnnotatedTreeNode *node);
     return self;
 }
 
-- (void)dealloc {
-    [root release];
-    [super dealloc];
-}
-
 - (id)rootNode {
     return root;
 }
@@ -65,7 +61,6 @@ static HFAnnotatedTreeNode *right_child(HFAnnotatedTreeNode *node);
 - (id)mutableCopyWithZone:(NSZone *)zone {
     HFAnnotatedTree *copied = [[[self class] alloc] init];
     copied->annotater = annotater;
-    [copied->root release];
     copied->root = [root mutableCopyWithZone:zone];
     return copied;
 }
@@ -79,7 +74,7 @@ static HFAnnotatedTreeNode *right_child(HFAnnotatedTreeNode *node);
     HFASSERT(node != nil);
     HFASSERT(get_parent(node) == nil);    
     /* Insert into the root */
-    insert(root, [node retain], self);
+    insert(root, node, self);
     VERIFY_INTEGRITY();
 }
 
@@ -87,7 +82,6 @@ static HFAnnotatedTreeNode *right_child(HFAnnotatedTreeNode *node);
     HFASSERT(node != nil);
     HFASSERT(get_parent(node) != nil);
     delete(node, self);
-    [node release];
     VERIFY_INTEGRITY();
 }
 
@@ -109,12 +103,6 @@ static HFAnnotatedTreeAnnotaterFunction_t get_annotater(HFAnnotatedTree *tree) {
 @end
 
 @implementation HFAnnotatedTreeNode
-
-- (void)dealloc {
-    [left release];
-    [right release];
-    [super dealloc];
-}
 
 - (NSComparisonResult)compare:(HFAnnotatedTreeNode *)node {
     USE(node);
@@ -166,15 +154,6 @@ static void reannotate(HFAnnotatedTreeNode *node, HFAnnotatedTree *tree) {
     node->annotation = annotater(node->left, node->right);
 }
 
-
-static void update_annotation(HFAnnotatedTreeNode *node, HFAnnotatedTree *tree) {
-    const HFAnnotatedTreeAnnotaterFunction_t annotater = get_annotater(tree);
-    HFAnnotatedTreeNode * const root = get_root(tree);
-    while (node != root) {
-        node->annotation = annotater(node->left, node->right);
-        node = node->parent;
-    }
-}
 
 static void insert(HFAnnotatedTreeNode *root, HFAnnotatedTreeNode *node, HFAnnotatedTree *tree) {
     /* Insert node at the proper place in the tree.  root is the root node, and we always insert to the left of root */
@@ -303,10 +282,10 @@ static void delete(HFAnnotatedTreeNode *n, HFAnnotatedTree *tree) { // If n is n
     
     /* Tell leaf's parent to forget about leaf */
     if (leaf->parent->left == leaf) {
-        leaf->parent->left = NULL;
+        leaf->parent->left = nil;
     }
     else {
-        leaf->parent->right = NULL;
+        leaf->parent->right = nil;
     }
     reannotate(leaf->parent, tree);
     
@@ -407,6 +386,7 @@ static HFAnnotatedTreeNode *get_parent(HFAnnotatedTreeNode *node) {
     return node->parent;
 }
 
+#if ! NDEBUG
 static void verify_integrity(HFAnnotatedTreeNode *n) {
     HFASSERT(!n->left || n->left->parent == n);
     HFASSERT(!n->right || n->right->parent == n);
@@ -418,14 +398,13 @@ static void verify_integrity(HFAnnotatedTreeNode *n) {
     }
     else {
         /* non-root node */
-        HFASSERT(n->level == (n->left == NULL ? 1 : n->left->level + 1));
+        HFASSERT(n->level == (n->left == nil ? 1 : n->left->level + 1));
         HFASSERT((n->level <= 1) || (n->right && n->level - n->right->level <= 1));
     }
     HFASSERT(!n->parent || !n->parent->parent ||
              n->parent->parent->level > n->level);
 }
 
-#if ! NDEBUG
 - (void)verifyIntegrity {
     [left verifyIntegrity];
     [right verifyIntegrity];

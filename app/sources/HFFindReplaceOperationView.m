@@ -7,6 +7,7 @@
 
 #import "HFFindReplaceOperationView.h"
 #import "BaseDataDocument.h"
+#import <HexFiend/HFEncodingManager.h>
 
 @implementation HFFindReplaceOperationView
 
@@ -17,16 +18,12 @@
 }
 
 - (void)setFindField:(HFTextField *)field {
-    [field retain];
-    [findField release];
     findField = field;
     [findField setUsesHexArea: ! fieldTypeIsASCII];
     [findField setUsesTextArea: fieldTypeIsASCII];
 }
 
 - (void)setReplaceField:(HFTextField *)field {
-    [field retain];
-    [replaceField release];
     replaceField = field;
     [replaceField setUsesHexArea: ! fieldTypeIsASCII];
     [replaceField setUsesTextArea: fieldTypeIsASCII];
@@ -77,11 +74,11 @@
 
 - (void)updateTextFieldStringEncodingFromDocumentNotification:(id)unused {
     USE(unused);
-    NSStringEncoding encoding;
+    HFStringEncoding *encoding;
     if (document) {
         encoding = [document stringEncoding];
     } else {
-        encoding = [NSString defaultCStringEncoding];
+        encoding = [HFEncodingManager shared].ascii;
     }
     [findField setStringEncoding:encoding];
     [replaceField setStringEncoding:encoding];
@@ -116,7 +113,6 @@
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self removeObserver:self forKeyPath:@"operationIsRunning"];
-    [super dealloc];
 }
 
 @end

@@ -10,11 +10,16 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
+#if ! HF_NO_PRIVILEGED_FILE_OPERATIONS
 #include <sys/disk.h>
+#endif
 
-#ifndef HF_NO_PRIVILEGED_FILE_OPERATIONS
+#if ! HF_NO_PRIVILEGED_FILE_OPERATIONS
 #import "HFPrivilegedHelperConnection.h"
 #endif
+
+@interface HFConcreteFileReference : HFFileReference
+@end
 
 /* The return code is just to quiet the static analyzer */
 static BOOL returnReadError(NSError **error) {
@@ -40,7 +45,6 @@ static BOOL returnReadError(NSError **error) {
 static BOOL returnUnsupportedFileTypeError(NSError **error, mode_t mode) {
     if (! error) return NO;
     
-    printf("TYPE: %o\n", mode);
     NSString *fileType;
     
     
@@ -66,16 +70,8 @@ static BOOL returnUnsupportedFileTypeError(NSError **error, mode_t mode) {
         fileType = [NSString stringWithFormat:@"unknown type (mode 0x%lx)", (long)mode];
     }
     NSString *errorDescription = [NSString stringWithFormat:@"The file is a %@ which is not a supported type.", fileType];
-    NSDictionary *errorDict = @{NSLocalizedDescriptionKey: errorDescription};
+    NSDictionary *errorDict = @{NSLocalizedFailureReasonErrorKey: errorDescription};
     *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadUnknownError userInfo:errorDict];
-    return NO;
-}
-
-static BOOL returnFortunateSonError(NSError **error) {
-    if (! error) return NO;
-    NSString *errorDescription = @"There was an error communicating with the privileged helper process.";
-    NSDictionary *errorDict = @{NSLocalizedDescriptionKey: errorDescription};
-    *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadUnknownError userInfo:errorDict];    
     return NO;
 }
 
@@ -107,7 +103,18 @@ static BOOL returnFTruncateError(NSError **error) {
     return YES;
 }
 
-@implementation HFFileReference
+@implementation HFFileReference {
+@protected
+    int fileDescriptor;
+    dev_t device;
+    unsigned long long inode;
+    unsigned long long fileLength;
+    mode_t fileMode;
+    BOOL isWritable;
+    uint32_t blockSize;
+    BOOL isPrivileged;
+    BOOL isFixedLength;
+}
 
 @synthesize isPrivileged, isFixedLength;
 
@@ -133,7 +140,7 @@ static BOOL returnFTruncateError(NSError **error) {
     return ref->device == device && ref->inode == inode;
 }
 
-+ (id)allocWithZone:(NSZone *)zone {
++ (instancetype)allocWithZone:(NSZone *)zone {
     if (self == [HFFileReference class]) {
         /* Default to HFConcreteFileReference */
         return [HFConcreteFileReference allocWithZone:zone];
@@ -159,7 +166,6 @@ static BOOL returnFTruncateError(NSError **error) {
     fileDescriptor = -1;
     if (! ([self initSharedWithPath:path error:error] && [self validateWithError:error])) {
         [self close];
-        [self release];
         self = nil;
     }
     return self;
@@ -171,20 +177,13 @@ static BOOL returnFTruncateError(NSError **error) {
     fileDescriptor = -1;
     if (! ([self initSharedWithPath:path error:error] && [self validateWithError:error])) {
         [self close];
-        [self release];
         self = nil;
     }
     return self;
 }
 
-- (void)finalize {
-    [self close];
-    [super finalize];
-}
-
 - (void)dealloc {
     [self close];
-    [super dealloc];
 }
 
 @end
@@ -192,17 +191,16 @@ static BOOL returnFTruncateError(NSError **error) {
 @implementation HFConcreteFileReference
 
 - (BOOL)initSharedWithPath:(NSString *)path error:(NSError **)error {
-    int result;
     REQUIRE_NOT_NULL(path);
     const char* p = [path fileSystemRepresentation];
     if (isWritable) {
-        fileDescriptor = open(p, O_RDWR | O_CREAT, 0744);
+        fileDescriptor = open(p, O_RDWR | O_CREAT, 0644);
     }
     else {
         fileDescriptor = open(p, O_RDONLY, 0);
     }
 
-#ifndef HF_NO_PRIVILEGED_FILE_OPERATIONS
+#if ! HF_NO_PRIVILEGED_FILE_OPERATIONS
 	if (fileDescriptor < 0 && errno == EACCES) {
 		if ([[HFPrivilegedHelperConnection sharedConnection] openFileAtPath:p writable:isWritable fileDescriptor:&fileDescriptor error:error]) {
             isPrivileged = YES;
@@ -219,7 +217,7 @@ static BOOL returnFTruncateError(NSError **error) {
     }
 
     struct stat sb;
-    result = fstat(fileDescriptor, &sb);
+    const int result = fstat(fileDescriptor, &sb);
 
     if (result != 0) {
         int err = errno;
@@ -228,6 +226,7 @@ static BOOL returnFTruncateError(NSError **error) {
         return NO;
     }
 
+#if ! HF_NO_PRIVILEGED_FILE_OPERATIONS
     if (!sb.st_size && (S_ISCHR(sb.st_mode) || S_ISBLK(sb.st_mode))) {
         uint64_t blockCount;
 
@@ -243,8 +242,11 @@ static BOOL returnFTruncateError(NSError **error) {
         isFixedLength = YES;
     }
     else {
+#endif
         fileLength = sb.st_size;
+#if ! HF_NO_PRIVILEGED_FILE_OPERATIONS
     }
+#endif
 
     fileMode = sb.st_mode;
     inode = sb.st_ino;

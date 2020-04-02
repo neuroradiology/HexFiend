@@ -1,5 +1,4 @@
 #import "HFGlyphTrie.h"
-#import <objc/objc-auto.h>
 
 /* If branchingDepth is 1, then this is a leaf and there's nothing to free (a parent frees its children).  If branchingDepth is 2, then this is a branch whose children are leaves, so we have to free the leaves but we do not recurse.  If branchingDepth is greater than 2, we do have to recurse. */
 static void freeTrie(struct HFGlyphTrieBranch_t *branch, uint8_t branchingDepth) {
@@ -32,7 +31,7 @@ static void insertTrie(void *node, uint8_t branchingDepth, NSUInteger key, struc
         /* Branch */
         struct HFGlyphTrieBranch_t *branch = node;
         NSUInteger keySlice = key & ((1 << kHFGlyphTrieBranchFactor) - 1), keyRemainder = key >> kHFGlyphTrieBranchFactor;
-        __strong void *child = branch->children[keySlice];
+        void *child = branch->children[keySlice];
         if (child == NULL) {
             if (branchingDepth == 2) {
                 child = calloc(1, sizeof(struct HFGlyphTrieLeaf_t));

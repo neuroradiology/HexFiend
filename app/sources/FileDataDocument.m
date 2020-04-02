@@ -20,12 +20,12 @@ static inline Class preferredByteArrayClass(void) {
     HFASSERT([absoluteURL isFileURL]);
     NSError *localError = nil;
     NSString *path = [absoluteURL path];
-    HFFileReference *fileReference = [[[HFFileReference alloc] initWithPath:path error:&localError] autorelease];
+    HFFileReference *fileReference = [[HFFileReference alloc] initWithPath:path error:&localError];
     if (fileReference == nil) {
         if (outError) *outError = localError;
     } else {
-        HFFileByteSlice *byteSlice = [[[HFFileByteSlice alloc] initWithFile:fileReference] autorelease];
-        HFByteArray *byteArray = [[[preferredByteArrayClass() alloc] init] autorelease];
+        HFFileByteSlice *byteSlice = [[HFFileByteSlice alloc] initWithFile:fileReference];
+        HFByteArray *byteArray = [[preferredByteArrayClass() alloc] init];
         [byteArray insertByteSlice:byteSlice inRange:HFRangeMake(0, 0)];
         [controller setByteArray:byteArray];
         result = YES;
@@ -33,9 +33,7 @@ static inline Class preferredByteArrayClass(void) {
         if ([fileReference isPrivileged])
             [controller setEditMode:HFReadOnlyMode];
         else {
-            // If the file is >= 2K in size, default to starting in overwrite mode
-            if ([fileReference length] >= (2<<10))
-                [controller setEditMode:HFOverwriteMode];
+            [controller setEditMode:[[NSUserDefaults standardUserDefaults] integerForKey:@"DefaultEditMode"]];
         }
     }
 

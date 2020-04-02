@@ -15,7 +15,6 @@
     id threadResult;
     dispatch_group_t waitGroup;
 
-    id (^startBlock)(HFProgressTracker *tracker);
     void (^completionHandler)(id result);
     
     IBOutlet NSProgressIndicator *progressIndicator;
@@ -23,7 +22,6 @@
     HFProgressTracker *tracker;
     NSArray *otherTopLevelObjects;
     double progress;
-    BOOL isFixedHeight;
     BOOL operationIsCancelling;
 }
 
@@ -35,7 +33,6 @@
 
 - (CGFloat)defaultHeight;
 
-@property (nonatomic) BOOL isFixedHeight;
 @property (nonatomic, copy) NSString *displayName;
 
 - (IBAction)cancelViewOperation:sender;

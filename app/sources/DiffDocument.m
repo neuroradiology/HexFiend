@@ -25,19 +25,13 @@
 - (void)scrollToFocusedInstruction;
 @end
 
-@interface NSEvent (HFLionStuff)
-- (CGFloat)scrollingDeltaY;
-- (BOOL)hasPreciseScrollingDeltas;
-- (CGFloat)deviceDeltaY;
-@end
-
 @implementation DiffDocument
 
 /* Returns either nil, or an array of two documents that would be compared in the "Compare (Range of) Front Documents" menu item. */
 + (NSArray *)getFrontTwoDocumentsForDiffing {
     id resultDocs[2];
     NSUInteger i = 0;
-    FOREACH(NSDocument *, doc, [NSApp orderedDocuments]) {
+    for(NSDocument *doc in [NSApp orderedDocuments]) {
         if ([doc isKindOfClass:[DiffDocument class]]) continue;
         if (![doc isKindOfClass:[BaseDataDocument class]]) continue;
         resultDocs[i++] = doc;
@@ -52,11 +46,13 @@
 }
 
 + (void)compareDocument:(BaseDataDocument *)document againstDocument:(BaseDataDocument *)otherDocument usingRange:(HFRange)range {
-    
     // convert documents to bytearrays
     HFByteArray *leftBytes = [document byteArray];
     HFByteArray *rightBytes = [otherDocument byteArray];
-    
+    [self compareByteArray:leftBytes againstByteArray:rightBytes usingRange:range leftFileName:[document displayName] rightFileName:[otherDocument displayName]];
+}
+
++ (void)compareByteArray:(HFByteArray *)leftBytes againstByteArray:(HFByteArray *)rightBytes usingRange:(HFRange)range leftFileName:(NSString *)leftFileName rightFileName:(NSString *)rightFileName {
     // extract range if present
     if (range.length > 0) {
         leftBytes = [leftBytes subarrayWithRange:range];
@@ -65,12 +61,11 @@
     
     // launch diff window
     DiffDocument *doc = [[DiffDocument alloc] initWithLeftByteArray:leftBytes rightByteArray:rightBytes range:range];
-    doc.leftFileName = [document displayName];
-    doc.rightFileName = [otherDocument displayName];
+    doc.leftFileName = leftFileName;
+    doc.rightFileName = rightFileName;
     [[NSDocumentController sharedDocumentController] addDocument:doc];
     [doc makeWindowControllers];
     [doc showWindows];
-    [doc release];
 }
 
 + (void)compareFrontTwoDocuments {
@@ -131,7 +126,7 @@
 }
 
 - (HFTextRepresenter *)textRepresenterFromTextView:(HFTextView *)textView {
-    FOREACH(HFRepresenter *, rep, [textView controller].representers) {
+    for(HFRepresenter *rep in [textView controller].representers) {
         if ([rep isKindOfClass:[HFTextRepresenter class]]) {
             return (HFTextRepresenter *)rep;
         }
@@ -154,14 +149,14 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
             leftRect.size = NSMakeSize(0, [[leftTextView controller] lineHeight]);
         }
         else {
-            leftRect = [left furthestRectOnEdge:NSMaxXEdge forByteRange:leftRange];
+            leftRect = [left furthestRectOnEdge:CGRectMaxXEdge forByteRange:leftRange];
         }
         if (rightRange.length == 0) {
             rightRect.origin = [right locationOfCharacterAtByteIndex:rightRange.location];
             rightRect.size = NSMakeSize(0, [[rightTextView controller] lineHeight]);
         }
         else {
-            rightRect = [right furthestRectOnEdge:NSMinXEdge forByteRange:rightRange];
+            rightRect = [right furthestRectOnEdge:CGRectMinXEdge forByteRange:rightRange];
         }
         //leftRect and rightRect may have origins of CGFLOAT_MAX and -CGFLOAT_MAX.  Converting them is a sketchy thing to do.  But in that case, the range type will be RangeIsAbove or RangeIsBelow, in which case the rect is ignored
         
@@ -283,8 +278,8 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
 - (BOOL)handleEvent:(NSEvent *)event {
     BOOL handled = NO;
     BOOL frInLeftView = [self firstResponderIsInView:leftTextView], frInRightView = [self firstResponderIsInView:rightTextView];
-    NSUInteger prohibitedFlags = (NSShiftKeyMask | NSControlKeyMask | NSAlternateKeyMask | NSCommandKeyMask);
-    if ([event type] == NSKeyDown && ! (prohibitedFlags & [event modifierFlags])) {
+    NSUInteger prohibitedFlags = (NSEventModifierFlagShift | NSEventModifierFlagControl | NSEventModifierFlagOption | NSEventModifierFlagCommand);
+    if ([event type] == NSEventTypeKeyDown && ! (prohibitedFlags & [event modifierFlags])) {
         if (frInLeftView || frInRightView) {
             /* Handle arrow keys */
             NSString *chars = [event characters];
@@ -300,7 +295,7 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
                 }
             }
         }
-    } else if ([event type] == NSScrollWheel) {
+    } else if ([event type] == NSEventTypeScrollWheel) {
         
         /* Redirect scroll wheel events to ourselves, except for those in the table (or, rather, its scroll view). If this scroll event comes very soon after the last one, then we consider it to be a momentum scroll event and direct it at the last target. */
         NSPoint location = [event locationInWindow];
@@ -312,7 +307,16 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
             handled = handledLastScrollEvent;
         } else {
             /* Don't handle it if it's in our scroll view */
-            handled = ! NSMouseInRect(location, [scrollView convertRect:[scrollView bounds] toView:nil], NO /* flipped */);
+            if (NSMouseInRect(location, [scrollView convertRect:[scrollView bounds] toView:nil], NO /* flipped */)) {
+                handled = NO;
+            } else {
+                NSView *layoutView = [layoutRepresenter view];
+                if (layoutView && NSMouseInRect(location, [layoutView convertRect:[layoutView bounds] toView:nil], NO)) {
+                    handled = NO;
+                } else {
+                    handled = YES;
+                }
+            }
         }
         
         /* Record info about our events */
@@ -350,13 +354,7 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self name:HFControllerDidChangePropertiesNotification object:[rightTextView controller]];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:HFControllerDidChangePropertiesNotification object:[leftTextView controller]];
-    [leftBytes release];
-    [rightBytes release];
-    [_leftFileName release];
-    [_rightFileName release];
     [diffComputationView removeObserver:self forKeyPath:@"progress"];
-    [diffComputationView release];
-    [super dealloc];
 }
 
 /* Diff documents never show a divider */
@@ -514,7 +512,7 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
     NSUInteger count = [selectedRanges count];
     NSMutableArray *correspondingRanges = [[NSMutableArray alloc] initWithCapacity:count];
     BOOL hasZeroLengthRange = NO, hasNonzeroLengthRange = NO;
-    FOREACH(HFRangeWrapper *, rangeWrapper, selectedRanges) {
+    for(HFRangeWrapper *rangeWrapper in selectedRanges) {
         HFRange range = [rangeWrapper HFRange];
         unsigned long long correspondingStartByte = [self lastCorrespondingByteBeforeByte:range.location onLeft:leftToRight];
         unsigned long long correspondingEndByte = [self lastCorrespondingByteBeforeByte:HFMaxRange(range) onLeft:leftToRight];
@@ -541,7 +539,6 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
     
     /* Now apply them */
     if ([correspondingRanges count] > 0) [dstController setSelectedContentsRanges:correspondingRanges];
-    [correspondingRanges release];
 }
 
 - (void)synchronizeControllers:(NSNotification *)note {
@@ -636,7 +633,7 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
     [[textView layoutRepresenter] setMaximizesBytesPerLine:YES];
     
     /* Remove the representers we don't want */
-    FOREACH(HFRepresenter *, rep, [textView layoutRepresenter].representers) {
+    for(HFRepresenter *rep in [textView layoutRepresenter].representers) {
         if ([rep isKindOfClass:[HFVerticalScrollerRepresenter class]] || [rep isKindOfClass:[HFStringEncodingTextRepresenter class]] || [rep isKindOfClass:[HFStatusBarRepresenter class]] || [rep isKindOfClass:[DataInspectorRepresenter class]]) {
             [[textView layoutRepresenter] removeRepresenter:rep];
             [[textView controller] removeRepresenter:rep];
@@ -655,7 +652,6 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
         HFLineCountingRepresenter *lineCounter = [[HFLineCountingRepresenter alloc] init];
         [[leftTextView controller] addRepresenter:lineCounter];
         [[leftTextView layoutRepresenter] addRepresenter:lineCounter];
-        [lineCounter release];	
     }
     
     /* It's not editable */
@@ -674,10 +670,10 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
     [leftBytes incrementChangeLockCounter];
     [rightBytes incrementChangeLockCounter];
     [diffComputationView startOperation:^id(HFProgressTracker *tracker) {
-        return [[[HFByteArrayEditScript alloc] initWithDifferenceFromSource:leftBytes toDestination:rightBytes trackingProgress:tracker] autorelease];
+        return [[HFByteArrayEditScript alloc] initWithDifferenceFromSource:self->leftBytes toDestination:self->rightBytes trackingProgress:tracker];
     } completionHandler:^(id script) {
-        [leftBytes decrementChangeLockCounter];
-        [rightBytes decrementChangeLockCounter];
+        [self->leftBytes decrementChangeLockCounter];
+        [self->rightBytes decrementChangeLockCounter];
         
         /* script may be nil if we cancelled */
         if (! script) {
@@ -685,9 +681,9 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
         } else {
             
             /* Hide the script banner */
-            if (operationView != nil && operationView == diffComputationView) [self hideBannerFirstThenDo:NULL];
+            if (self->operationView != nil && self->operationView == self->diffComputationView) [self hideBannerFirstThenDo:NULL];
             
-            editScript = [script retain];
+            self->editScript = script;
             [self showInstructionsFromEditScript];	
         }
     }];
@@ -725,7 +721,7 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
 
     /* Create the diff computation view */
     if (! diffComputationView) {
-        diffComputationView = [self newOperationViewForNibName:@"DiffComputationBanner" displayName:@"Diffing" fixedHeight:YES];
+        diffComputationView = [self newOperationViewForNibName:@"DiffComputationBanner" displayName:@"Diffing"];
     }
     [self prepareBannerWithView:diffComputationView withTargetFirstResponder:nil];
     [self kickOffComputeDiff];
@@ -739,7 +735,6 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
     [overlayView setLeftView:leftTextView];
     [overlayView setRightView:rightTextView];
     [[window contentView] addSubview:overlayView];
-    [overlayView release];
     
     /* Update our window size so it's the right size for our data */
     NSRect windowFrame = [window frame];
@@ -1039,7 +1034,7 @@ static const CGFloat kScrollMultiplier = (CGFloat)1.5;
 
 - (void)scrollWithScrollEvent:(NSEvent *)scrollEvent {
     HFASSERT(scrollEvent != NULL);
-    HFASSERT([scrollEvent type] == NSScrollWheel);
+    HFASSERT([scrollEvent type] == NSEventTypeScrollWheel);
     long double scrollY = 0;
     
     /* Prefer precise deltas */
@@ -1149,6 +1144,13 @@ static const CGFloat kScrollMultiplier = (CGFloat)1.5;
     resultSize.width = [textViewContainer convertSize:containerSize toView:nil].width + fixedWidth;
     resultSize.height = frameSize.height;
     return resultSize;
+}
+
+- (NSView *)bannerAssociateView
+{
+    NSView *view = [textViewContainer superview];
+    HFASSERT([view isKindOfClass:[NSSplitView class]]);
+    return view;
 }
 
 @end

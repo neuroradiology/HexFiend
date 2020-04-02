@@ -8,6 +8,14 @@
 #import "MyDocumentController.h"
 #import "BaseDataDocument.h"
 #include <sys/stat.h>
+#import "HFOpenAccessoryViewController.h"
+#import "ExtendedAttributeDataDocument.h"
+
+@interface MyDocumentController ()
+
+@property HFOpenAccessoryViewController *openAccessoryController;
+
+@end
 
 @implementation MyDocumentController
 
@@ -53,36 +61,31 @@
     if ([NSThread isMainThread]) {
         BaseDataDocument *transientDoc = documents[0], *doc = documents[1];
         NSArray *controllersToTransfer = [[transientDoc windowControllers] copy];
-        FOREACH(NSWindowController *, controller, controllersToTransfer) {
+        for(NSWindowController *controller in controllersToTransfer) {
             [doc addWindowController:controller];
             [transientDoc removeWindowController:controller];
             [doc adoptWindowController:controller fromTransientDocument:transientDoc];
         }
         [transientDoc close];
-        [controllersToTransfer release];
-        
     } else {
         [self performSelectorOnMainThread:_cmd withObject:documents waitUntilDone:YES];
     }
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-implementations"
-- (id)openDocumentWithContentsOfURL:(NSURL *)absoluteURL display:(BOOL)displayDocument error:(NSError **)outError {
-#pragma clang diagnostic pop
+- (void)openDocumentWithContentsOfURL:(NSURL *)url display:(BOOL)displayDocument completionHandler:(void (^)(NSDocument *document, BOOL documentWasAlreadyOpen, NSError *error))completionHandler {
     BaseDataDocument *transientDoc = [self transientDocumentToReplace];
     
     // Don't make NSDocumentController display the NSDocument it creates. Instead, do it later manually to ensure that the transient document has been replaced first.
-    BaseDataDocument *result = [super openDocumentWithContentsOfURL:absoluteURL display:NO error:outError];
-    if (result) {
-        if ([result isKindOfClass:[BaseDataDocument class]] && transientDoc) {
-            [transientDoc setTransient:NO];
-            [self replaceTransientDocument:@[transientDoc, result]];
+    [super openDocumentWithContentsOfURL:url display:NO completionHandler:^(NSDocument *theDocument, BOOL theDocumentWasAlreadyOpen, NSError *theError) {
+        if (theDocument) {
+            if ([theDocument isKindOfClass:[BaseDataDocument class]] && transientDoc) {
+                [transientDoc setTransient:NO];
+                [self replaceTransientDocument:@[transientDoc, theDocument]];
+            }
+            if (displayDocument) [self displayDocument:theDocument];
         }
-        if (displayDocument) [self displayDocument:result];
-    }
-    
-    return result;
+        completionHandler(theDocument, theDocumentWasAlreadyOpen, theError);
+    }];
 }
 
 - (id)openUntitledDocumentAndDisplay:(BOOL)displayDocument error:(NSError **)outError {
@@ -91,6 +94,32 @@
         [doc setTransient:YES];
     }
     return doc;
+}
+
+- (void)beginOpenPanel:(NSOpenPanel *)openPanel forTypes:(NSArray *)inTypes completionHandler:(void (^)(NSInteger result))completionHandler
+{
+    openPanel.treatsFilePackagesAsDirectories = YES;
+    openPanel.showsHiddenFiles = YES;
+    openPanel.resolvesAliases = [[NSUserDefaults standardUserDefaults] boolForKey:@"ResolveAliases"];
+    if (!self.openAccessoryController) {
+        self.openAccessoryController = [[HFOpenAccessoryViewController alloc] init];
+    }
+    openPanel.delegate = self.openAccessoryController;
+    openPanel.accessoryView = self.openAccessoryController.view;
+    if (@available(macOS 10.11, *)) {
+        openPanel.accessoryViewDisclosed = YES;
+    }
+    [super beginOpenPanel:openPanel forTypes:inTypes completionHandler:completionHandler];
+}
+
+- (__kindof NSDocument *)makeDocumentWithContentsOfURL:(NSURL *)url ofType:(NSString *)typeName error:(NSError * _Nullable *)outError {
+    NSString *attrName = self.openAccessoryController.extendedAttributeName;
+    if (attrName) {
+        ExtendedAttributeDataDocument *doc = [[ExtendedAttributeDataDocument alloc] initWithAttributeName:self.openAccessoryController.extendedAttributeName forURL:url];
+        [self.openAccessoryController reset];
+        return doc;
+    }
+    return [super makeDocumentWithContentsOfURL:url ofType:typeName error:outError];
 }
 
 @end

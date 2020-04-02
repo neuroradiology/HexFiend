@@ -5,7 +5,7 @@
 //  Copyright 2008 ridiculous_fish. All rights reserved.
 //
 
-#import <HexFiend/HFTestHashing.h>
+#import "HFTestHashing.h"
 #import <HexFiend/HFByteArray.h>
 #include <CommonCrypto/CommonDigest.h>
 
@@ -19,7 +19,7 @@ NSData *HFHashFile(NSURL *url) {
     const CC_LONG bufferSize = 1024 * 1024 * 4;
     unsigned char *buffer = malloc(bufferSize);
     CC_LONG amount;
-    NSInputStream *stream = [[[NSInputStream alloc] initWithFileAtPath:[url path]] autorelease];
+    NSInputStream *stream = [[NSInputStream alloc] initWithFileAtPath:[url path]];
     [stream open];
     while ((amount = (CC_LONG)[stream read:buffer maxLength:bufferSize]) > 0) {
         CC_SHA1_Update(&ctx, buffer, amount);

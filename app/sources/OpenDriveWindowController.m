@@ -7,6 +7,7 @@
 //
 
 #import "OpenDriveWindowController.h"
+#import "AppUtilities.h"
 #include <sys/stat.h>
 #include <objc/message.h>
 
@@ -85,27 +86,30 @@ enum {
     return self;
 }
 
-- (void)dealloc
-{
-    [driveList release];
-    [super dealloc];
-}
-
-- (NSString *)windowNibName 
+- (NSString *)windowNibName
 {
     return @"OpenDriveDialog";
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+    // Hide Open Drive if we are sandboxed
+    if ([menuItem action] == @selector(showWindow:) && isSandboxed()) {
+        [menuItem setHidden:YES];
+        return NO;
+    }
+    return YES;
 }
 
 static void addDisk(DADiskRef disk, UNUSED void * context)
 {
     @autoreleasepool {
-        NSDictionary *diskDesc = [(NSDictionary*)DADiskCopyDescription(disk) autorelease];
+        NSDictionary *diskDesc = (__bridge_transfer NSDictionary*)DADiskCopyDescription(disk);
         if (diskDesc) {
             // Don't add disks that represent a network volume
             NSNumber *isNetwork = diskDesc[(id)kDADiskDescriptionVolumeNetworkKey];
             if (!isNetwork || ![isNetwork boolValue]) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    [(OpenDriveWindowController*)context addToDriveList:diskDesc];
+                    [(__bridge OpenDriveWindowController*)context addToDriveList:diskDesc];
                 });
             }
         }
@@ -118,7 +122,7 @@ static void removeDisk(DADiskRef disk, void * context)
         const char *bsdName = DADiskGetBSDName(disk);
         NSString *nsbsdName = bsdName ? @(bsdName) : @"";
         dispatch_async(dispatch_get_main_queue(), ^{
-            [(OpenDriveWindowController*)context removeDrive:nsbsdName];
+            [(__bridge OpenDriveWindowController*)context removeDrive:nsbsdName];
         });
     }
 }
@@ -128,13 +132,13 @@ static void removeDisk(DADiskRef disk, void * context)
     @autoreleasepool {
         CFRunLoopRef runLoop = CFRunLoopGetCurrent();
         DASessionRef session = DASessionCreate(kCFAllocatorDefault);
-        DARegisterDiskAppearedCallback(session, NULL, addDisk, self);
-        DARegisterDiskDisappearedCallback(session, NULL, removeDisk, self);
+        DARegisterDiskAppearedCallback(session, NULL, addDisk, (__bridge void*)self);
+        DARegisterDiskDisappearedCallback(session, NULL, removeDisk, (__bridge void*)self);
         DASessionScheduleWithRunLoop(session, runLoop, kCFRunLoopDefaultMode);
         CFRunLoopRun();
         DASessionUnscheduleFromRunLoop(session, runLoop, kCFRunLoopDefaultMode);
-        DAUnregisterCallback(session, removeDisk, self);
-        DAUnregisterCallback(session, addDisk, self);
+        DAUnregisterCallback(session, removeDisk, (__bridge void*)self);
+        DAUnregisterCallback(session, addDisk, (__bridge void*)self);
         CFRelease(session);
     }
 }
@@ -192,7 +196,7 @@ static CFURLRef copyCharacterDevicePathForPossibleBlockDevice(NSURL *url)
     NSString *description = [NSString stringWithFormat:descriptionFormatString, [url path]];
     NSString *recoverySuggestion = [NSString stringWithFormat:recoverySuggestionFormatString, [newURL path]];
     NSArray *recoveryOptions = @[recoveryOption, cancel];
-    NSDictionary *userInfo = [[[NSDictionary alloc] initWithObjectsAndKeys:
+    NSDictionary *userInfo = [[NSDictionary alloc] initWithObjectsAndKeys:
                               description, NSLocalizedDescriptionKey,
                               failureReason, NSLocalizedFailureReasonErrorKey,
                               recoverySuggestion, NSLocalizedRecoverySuggestionErrorKey,
@@ -202,7 +206,7 @@ static CFURLRef copyCharacterDevicePathForPossibleBlockDevice(NSURL *url)
                               url, NSURLErrorKey,
                               [url path], NSFilePathErrorKey,
                               newURL, kNewURLErrorKey,
-                              nil] autorelease];
+                              nil];
     return [NSError errorWithDomain:NSPOSIXErrorDomain code:EBUSY userInfo:userInfo];
 }
 
@@ -216,23 +220,23 @@ static CFURLRef copyCharacterDevicePathForPossibleBlockDevice(NSURL *url)
         if ([path length] > 0) 
         {
             /* Try making the document */
-            NSError *error = nil;
             NSURL *url = [NSURL fileURLWithPath:path isDirectory:NO];
-            id document = [self openURL:url error:&error];
-            if (! document && error) 
-            {
-                if ([[error domain] isEqual:NSPOSIXErrorDomain] && [error code] == EBUSY) 
+            [self openURL:url completionHandler:^(NSDocument *document, NSError *error) {
+                if (! document && error)
                 {
-                    /* If this is a block device, try getting the corresponding character device, and offer to open that. */
-                    CFURLRef newURL = copyCharacterDevicePathForPossibleBlockDevice(url);
-                    if (newURL) 
+                    if ([[error domain] isEqual:NSPOSIXErrorDomain] && [error code] == EBUSY) 
                     {
-                        error = [self makeBlockToCharacterDeviceErrorForOriginalURL:url newURL:(NSURL *)newURL underlyingError:error];
-                        CFRelease(newURL);
-                    }
-                }	    
-                [NSApp presentError:error];
-            }
+                        /* If this is a block device, try getting the corresponding character device, and offer to open that. */
+                        CFURLRef newURL = copyCharacterDevicePathForPossibleBlockDevice(url);
+                        if (newURL) 
+                        {
+                            error = [self makeBlockToCharacterDeviceErrorForOriginalURL:url newURL:(__bridge NSURL *)newURL underlyingError:error];
+                            CFRelease(newURL);
+                        }
+                    }	    
+                    [NSApp presentError:error];
+                }
+            }];
         }
 	}
 }
@@ -249,10 +253,10 @@ static CFURLRef copyCharacterDevicePathForPossibleBlockDevice(NSURL *url)
         {
             NSURL *newURL = [error userInfo][kNewURLErrorKey];
             if (newURL) {
-                NSError *anotherError = nil;
-                NSDocument *newDocument = [self openURL:newURL error:&anotherError];
-                if (anotherError) [NSApp presentError:anotherError];
-                success = !! newDocument;
+                [self openURL:newURL completionHandler:^(NSDocument * __unused document, NSError *anotherRrror) {
+                    if (anotherRrror) [NSApp presentError:anotherRrror];
+                }];
+                success = YES; // openURL is async, so we can't tell if it succeeded, so fake success
             }
         }
             break;
@@ -268,14 +272,15 @@ static CFURLRef copyCharacterDevicePathForPossibleBlockDevice(NSURL *url)
     objc_msgSend(delegate, didRecoverSelector, success, contextInfo);
 }
 
-- (NSDocument *)openURL:(NSURL *)url error:(NSError **)error {
-    /* Attempts to create an NSDocument for the given NSURL, and returns an error on failure */
-    NSDocument *result = [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:url display:YES error:error];
-    if (result) {
-        /* The open succeeded, so close the window */
-        [self close];
-    }
-    return result;
+- (void)openURL:(NSURL *)url completionHandler:(OpenURLCompletionHandler)completionHandler {
+    /* Attempts to create an NSDocument for the given NSURL */
+    [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:url display:YES completionHandler:^(NSDocument * _Nullable document, BOOL __unused documentWasAlreadyOpen, NSError * _Nullable error) {
+        if (document) {
+            /* The open succeeded, so close the window */
+            [self close];
+        }
+        completionHandler(document, error);
+    }];
 }
 
 - (IBAction) cancelDriveSelection:(UNUSED id)sender
@@ -286,7 +291,7 @@ static CFURLRef copyCharacterDevicePathForPossibleBlockDevice(NSURL *url)
 - (void) addToDriveList:(NSDictionary*)dict
 {
 	[driveList addObject:dict];
-    NSSortDescriptor *sorter = [[[NSSortDescriptor alloc] initWithKey:(NSString*)kDADiskDescriptionMediaBSDNameKey ascending:YES] autorelease];
+    NSSortDescriptor *sorter = [[NSSortDescriptor alloc] initWithKey:(NSString*)kDADiskDescriptionMediaBSDNameKey ascending:YES];
     [driveList sortUsingDescriptors:@[sorter]];
     [table reloadData];
 }

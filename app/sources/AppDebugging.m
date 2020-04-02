@@ -7,49 +7,7 @@
 
 #import "AppDebugging.h"
 #import "AppUtilities.h"
-
-@implementation GenericPrompt
-
-- (IBAction)genericPromptOKClicked:sender {
-    USE(sender);
-    [NSApp stopModalWithCode:NSRunStoppedResponse];
-}
-
-- (IBAction)genericPromptCancelClicked:sender {
-    USE(sender);
-    [NSApp stopModalWithCode:NSRunAbortedResponse];
-}
-
-- (instancetype)initWithPromptText:(NSString *)text {
-    self = [super initWithWindowNibName:@"GenericPrompt"];
-    promptText = [text copy];
-    return self;
-}
-
-- (void)windowDidLoad {
-    [super windowDidLoad];
-    [promptField setStringValue:promptText];
-}
-
-- (void)dealloc {
-    [promptText release];
-    [super dealloc];
-}
-
-+ (NSString *)promptForValueWithText:(NSString *)text {
-    NSString *textResult = nil;
-    GenericPrompt *pmpt = [[self alloc] initWithPromptText:text];
-    NSInteger modalResult = [NSApp runModalForWindow:[pmpt window]];
-    if (modalResult == NSRunStoppedResponse) {
-        textResult = [[[pmpt->valueField stringValue] copy] autorelease];
-    }
-    [pmpt close];
-    [pmpt release];
-    return textResult;
-    
-}
-
-@end
+#import "HFPrompt.h"
 
 static unsigned long long unsignedLongLongValue(NSString *s) {
     unsigned long long result = 0;
@@ -67,14 +25,10 @@ static unsigned long long unsignedLongLongValue(NSString *s) {
 - (void)installDebuggingMenuItems:(NSMenu *)menu {
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Show ByteArray" action:@selector(_showByteArray:) keyEquivalent:@"k"];
-    [[[menu itemArray] lastObject] setKeyEquivalentModifierMask:NSCommandKeyMask];
+    [[[menu itemArray] lastObject] setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
     [menu addItemWithTitle:@"Randomly Tweak ByteArray" action:@selector(_tweakByteArray:) keyEquivalent:@""];
     [menu addItemWithTitle:@"Random ByteArray" action:@selector(_randomByteArray:) keyEquivalent:@""];
     
-}
-
-static NSString *promptForValue(NSString *promptText) {
-    return [GenericPrompt promptForValueWithText:promptText];
 }
 
 - (void)_showByteArray:sender {
@@ -84,20 +38,18 @@ static NSString *promptForValue(NSString *promptText) {
 
 - (void)_randomByteArray:sender {
     USE(sender);
-    unsigned long long length = unsignedLongLongValue(promptForValue(@"How long?"));
+    unsigned long long length = unsignedLongLongValue(HFPromptForValue(NSLocalizedString(@"How long?", "")));
     Class clsHFRandomDataByteSlice = NSClassFromString(@"HFRandomDataByteSlice");
     HFByteSlice *slice = [[clsHFRandomDataByteSlice alloc] initWithRandomDataLength:length];
     HFByteArray *array = [[HFBTreeByteArray alloc] init];
     [array insertByteSlice:slice inRange:HFRangeMake(0, 0)];
-    [slice release];
     [controller insertByteArray:array replacingPreviousBytes:0 allowUndoCoalescing:NO];
-    [array release];
 }
 
 - (void)_tweakByteArray:sender {
     USE(sender);
     
-    unsigned tweakCount = [promptForValue(@"How many tweaks?") intValue];
+    unsigned tweakCount = [HFPromptForValue(NSLocalizedString(@"How many tweaks?", "")) intValue];
     
     HFByteArray *byteArray = [[controller byteArray] mutableCopy];
     unsigned i;
@@ -113,7 +65,6 @@ static NSString *promptForValue(NSString *promptText) {
 		offset = random() % (1 + length);
 		HFByteSlice* slice = [[clsHFRandomDataByteSlice alloc] initWithRandomDataLength: 1 + random() % 1000];
 		[byteArray insertByteSlice:slice inRange:HFRangeMake(offset, 0)];
-		[slice release];
 		break;
 	    }
 	    case 1: { //delete
@@ -128,7 +79,6 @@ static NSString *promptForValue(NSString *promptText) {
     } // @autoreleasepool
     }
     [controller replaceByteArray:byteArray];
-    [byteArray release];
 }
 
 @end

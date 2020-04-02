@@ -5,7 +5,7 @@
 //  Copyright 2008 ridiculous_fish. All rights reserved.
 //
 
-#import <HexFiend/HFByteSlice_Private.h>
+#import "HFByteSlice_Private.h"
 #import <HexFiend/HFFileByteSlice.h>
 #import <HexFiend/HFFileReference.h>
 #import <HexFiend/HFByteRangeAttribute.h>
@@ -22,7 +22,7 @@
     HFASSERT(HFSum(off, len) <= [file length]);
     REQUIRE_NOT_NULL(file);
     self = [super init];
-    fileReference = [file retain];
+    fileReference = file;
     offset = off;
     length = len;
     return self;
@@ -42,13 +42,8 @@
     HFASSERT(range.length > 0);
     HFASSERT(range.location < [self length]);
     HFASSERT([self length] - range.location >= range.length);
-    if (range.location == 0 && range.length == length) return [[self retain] autorelease];
-    return [[[[self class] alloc] initWithFile:fileReference offset:range.location + offset length:range.length] autorelease];
-}
-
-- (void)dealloc {
-    [fileReference release];
-    [super dealloc];
+    if (range.location == 0 && range.length == length) return self;
+    return [[[self class] alloc] initWithFile:fileReference offset:range.location + offset length:range.length];
 }
 
 - (BOOL)isSourcedFromFile {

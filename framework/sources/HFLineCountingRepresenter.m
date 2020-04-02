@@ -9,13 +9,14 @@
 #import <HexFiend/HFLineCountingView.h>
 
 NSString *const HFLineCountingRepresenterMinimumViewWidthChanged = @"HFLineCountingRepresenterMinimumViewWidthChanged";
+NSString *const HFLineCountingRepresenterCycledLineNumberFormat = @"HFLineCountingRepresenterCycledLineNumberFormat";
+
 
 /* Returns the maximum advance in points for a hexadecimal digit for the given font (interpreted as a screen font) */
 static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
     REQUIRE_NOT_NULL(font);
     font = [font screenFont];
     CGFloat maxDigitAdvance = 0;
-    NSDictionary *attributesDictionary = [[NSDictionary alloc] initWithObjectsAndKeys:font, NSFontAttributeName, nil];
     NSTextStorage *storage = [[NSTextStorage alloc] init];
     NSLayoutManager *manager = [[NSLayoutManager alloc] init];
     [storage setFont:font];
@@ -29,17 +30,12 @@ static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
         char c = "0123456789ABCDEF"[i];
         NSString *string = [[NSString alloc] initWithBytes:&c length:1 encoding:NSASCIIStringEncoding];
         [storage replaceCharactersInRange:NSMakeRange(0, (i ? 1 : 0)) withString:string];
-        [string release];
         glyphs[i] = [manager glyphAtIndex:0 isValidIndex:NULL];
         HFASSERT(glyphs[i] != NSNullGlyph);
     }
     
     /* Get the advancements of each of those glyphs */
     [font getAdvancements:advancements forGlyphs:glyphs count:sizeof glyphs / sizeof *glyphs];
-    
-    [manager release];
-    [attributesDictionary release];
-    [storage release];
     
     /* Find the widest digit */
     for (NSUInteger i=0; i < sizeof glyphs / sizeof *glyphs; i++) {
@@ -57,8 +53,6 @@ static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
         interiorShadowEdge = NSMaxXEdge;
         
         _borderedEdges = (1 << NSMaxXEdge);
-        _borderColor = [[NSColor darkGrayColor] retain];
-        _backgroundColor = [[NSColor colorWithCalibratedWhite:(CGFloat).87 alpha:1] retain];
     }
     return self;
 }
@@ -69,8 +63,6 @@ static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
     [coder encodeDouble:lineHeight forKey:@"HFLineHeight"];
     [coder encodeInt64:minimumDigitCount forKey:@"HFMinimumDigitCount"];
     [coder encodeInt64:lineNumberFormat forKey:@"HFLineNumberFormat"];
-    [coder encodeObject:self.backgroundColor forKey:@"HFBackgroundColor"];
-    [coder encodeObject:self.borderColor forKey:@"HFBorderColor"];
     [coder encodeInt64:self.borderedEdges forKey:@"HFBorderedEdges"];
 }
 
@@ -82,16 +74,8 @@ static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
     lineNumberFormat = (HFLineNumberFormat)[coder decodeInt64ForKey:@"HFLineNumberFormat"];
     
     _borderedEdges = [coder decodeObjectForKey:@"HFBorderedEdges"] ? (NSInteger)[coder decodeInt64ForKey:@"HFBorderedEdges"] : 0;
-    _borderColor = [[coder decodeObjectForKey:@"HFBorderColor"] ?: [NSColor darkGrayColor] retain];
-    _backgroundColor = [[coder decodeObjectForKey:@"HFBackgroundColor"] ?: [NSColor colorWithCalibratedWhite:(CGFloat).87 alpha:1] retain];
     
     return self;
-}
-
-- (void)dealloc {
-    [_borderColor release];
-    [_backgroundColor release];
-    [super dealloc];
 }
 
 - (NSView *)createView {
@@ -114,7 +98,7 @@ static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
 }
 
 - (void)updateFontAndLineHeight {
-    HFLineCountingView *view = [self view];
+    HFLineCountingView *view = (HFLineCountingView *)[self view];
     HFController *controller = [self controller];
     NSFont *font = controller ? [controller font] : [NSFont fontWithName:HFDEFAULT_FONT size:HFDEFAULT_FONTSIZE];
     [view setFont:font];
@@ -123,11 +107,11 @@ static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
 }
 
 - (void)updateLineNumberFormat {
-    [[self view] setLineNumberFormat:lineNumberFormat];
+    [(HFLineCountingView *)[self view] setLineNumberFormat:lineNumberFormat];
 }
 
 - (void)updateBytesPerLine {
-    [[self view] setBytesPerLine:[[self controller] bytesPerLine]];
+    [(HFLineCountingView *)[self view] setBytesPerLine:[[self controller] bytesPerLine]];
 }
 
 - (void)updateLineRangeToDraw {
@@ -136,7 +120,7 @@ static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
     if (controller) {
         lineRange = [controller displayedLineRange];
     }
-    [[self view] setLineRangeToDraw:lineRange];
+    [(HFLineCountingView *)[self view] setLineRangeToDraw:lineRange];
 }
 
 - (CGFloat)preferredWidth {
@@ -157,10 +141,15 @@ static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
         unsigned long long contentsLengthRoundedToLine = HFProductULL(lineCount, bytesPerLine);
         NSUInteger digitCount = [HFLineCountingView digitsRequiredToDisplayLineNumber:contentsLengthRoundedToLine inFormat:lineNumberFormat];
         NSUInteger digitWidth = MAX(minimumDigitCount, digitCount);
-        if (digitWidth != digitsToRepresentContentsLength) {
+        static BOOL firstTime = YES;
+        if (firstTime || digitWidth != digitsToRepresentContentsLength) {
             digitsToRepresentContentsLength = digitWidth;
             [self postMinimumViewWidthChangedNotification];
         }
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            firstTime = NO;
+        });
     }
 }
 
@@ -185,6 +174,7 @@ static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
     lineNumberFormat = (lineNumberFormat + 1) % HFLineNumberFormatMAXIMUM;
     [self updateLineNumberFormat];
     [self updateMinimumViewWidth];
+    [[NSNotificationCenter defaultCenter] postNotificationName:HFLineCountingRepresenterCycledLineNumberFormat object:self];
 }
 
 - (void)initializeView {
@@ -228,23 +218,6 @@ static CGFloat maximumDigitAdvanceForFont(NSFont *font) {
 
 - (NSInteger)interiorShadowEdge {
     return interiorShadowEdge;
-}
-
-
-- (void)setBorderColor:(NSColor *)color {
-    [_borderColor autorelease];
-    _borderColor = [color copy];
-    if ([self isViewLoaded]) {
-        [[self view] setNeedsDisplay:YES];
-    }
-}
-
-- (void)setBackgroundColor:(NSColor *)color {
-    [_backgroundColor autorelease];
-    _backgroundColor = [color copy];
-    if ([self isViewLoaded]) {
-        [[self view] setNeedsDisplay:YES];
-    }
 }
 
 @end

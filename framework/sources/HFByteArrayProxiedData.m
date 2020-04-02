@@ -37,12 +37,6 @@ static NSData *newDataFromByteArray(HFByteArray *array) {
     return self;
 }
 
-- (void)dealloc {
-    [byteArray release];
-    [serializedData release];
-    [super dealloc];
-}
-
 - (NSUInteger)length {
     return length;
 }
@@ -50,37 +44,37 @@ static NSData *newDataFromByteArray(HFByteArray *array) {
 - (id)_copyRetainedBacking {
     id result = nil;
     @synchronized(self) {
-        if (serializedData) result = [serializedData retain];
-        else result = [byteArray retain];
+        if (serializedData) result = serializedData;
+        else result = byteArray;
     }
     return result;
     
 }
 
 - (const void *)bytes {
-    HFByteArray *byteArrayToRelease = nil;
     NSData *resultingData = nil;
     @synchronized(self) {
         if (serializedData == nil) {
             HFASSERT(byteArray != nil);
             serializedData = newDataFromByteArray(byteArray);
-            byteArrayToRelease = byteArray;
             byteArray = nil;
         }
         resultingData = serializedData;
     }
-    [byteArrayToRelease release];
     return [resultingData bytes];
 }
 
 - (id)copyWithZone:(NSZone *)zone {
     USE(zone);
-    return [self retain];
+    return self;
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 - (void)getBytes:(void *)buffer {
     return [self getBytes:buffer range:NSMakeRange(0, length)];
 }
+#pragma clang diagnostic pop
 
 - (void)getBytes:(void *)buffer length:(NSUInteger)len {
     return [self getBytes:buffer range:NSMakeRange(0, len)];
@@ -94,7 +88,6 @@ static NSData *newDataFromByteArray(HFByteArray *array) {
     else {
         [(NSData *)backing getBytes:buffer range:range];
     }
-    [backing release];
 }
 
 @end

@@ -5,7 +5,6 @@
 //  Copyright 2010 ridiculous_fish. All rights reserved.
 //
 
-#import <Cocoa/Cocoa.h>
 #import <XCTest/XCTest.h>
 #include <sys/stat.h>
 
@@ -402,7 +401,7 @@ static NSUInteger random_upto(unsigned long long val) {
     }
     
     HFFileReference *ref;
-    HFByteArray *array =  byteArrayForFile([fileURL path], &ref);
+    HFByteArray *array = byteArrayForFile([fileURL path], &ref);
     XCTAssert([ref length] == [data length]);
     XCTAssert([HFHashByteArray(array) isEqual:HFHashFile(fileURL)]);
     
@@ -600,61 +599,6 @@ static void HFByteArray_testSearchAlgorithms(XCTestCase *self, HFByteArray *need
         
         [byteArray insertByteSlice:needleSlice inRange:HFRangeMake([byteArray length] - random_upto(1 << 15), 0)];
         HFByteArray_testSearchAlgorithms(self, needle, byteArray);
-    }
-}
-
-- (void)testIndexSet {
-    for (int repetition = 0; repetition < 3; repetition++) @autoreleasepool {
-        NSMutableIndexSet *nsindexset = [[NSMutableIndexSet alloc] init];
-        HFMutableIndexSet *hfindexset = [[HFMutableIndexSet alloc] init];
-        unsigned long round, roundCount = 4096 * 4;
-        const NSUInteger supportedIndexEnd = NSNotFound;
-        for (round = 0; round < 4096 * 2; round++) {
-            if (round % (roundCount / 8) == 0) dbg_printf("Index set test %lu / %lu\n", round, roundCount);
-            BOOL insert = ([nsindexset count] == 0 || (random() % 2));
-            NSUInteger end = 1 + (random() % supportedIndexEnd);
-            NSUInteger start = 1 + (random() % supportedIndexEnd);
-            if (end < start) {
-                NSUInteger temp = end;
-                end = start;
-                start = temp;
-            }
-            if (insert) {
-                [nsindexset addIndexesInRange:NSMakeRange(start, end - start)];
-                [hfindexset addIndexesInRange:HFRangeMake(start, end - start)];
-            }
-            else {
-                [nsindexset removeIndexesInRange:NSMakeRange(start, end - start)];
-                [hfindexset removeIndexesInRange:HFRangeMake(start, end - start)];
-            }
-            
-            [hfindexset verifyIntegrity];
-            HFASSERT([hfindexset isEqualToNSIndexSet:nsindexset]);
-            
-            if ([nsindexset count] > 0) {
-                NSInteger amountToShift;
-                NSUInteger indexToShift;
-                if (random() % 2 && [nsindexset firstIndex] > 0) {
-                    /* Shift left */
-                    amountToShift = (1 + random() % [nsindexset firstIndex]);
-                    indexToShift = amountToShift + (random() % (supportedIndexEnd - amountToShift));
-                    
-                    [nsindexset shiftIndexesStartingAtIndex:indexToShift by:-amountToShift];
-                    [hfindexset shiftValuesLeftByAmount:amountToShift startingAtValue:indexToShift];
-                }
-                else if ([nsindexset lastIndex] + 1 < supportedIndexEnd) {
-                    /* Shift right */
-                    NSUInteger maxAmountToShift = (supportedIndexEnd - 1 - [nsindexset lastIndex]);
-                    amountToShift = (1 + random() % maxAmountToShift);
-                    indexToShift = random() % (1 + [nsindexset lastIndex]);
-                    
-                    [nsindexset shiftIndexesStartingAtIndex:indexToShift by:amountToShift];
-                    [hfindexset shiftValuesRightByAmount:amountToShift startingAtValue:indexToShift];
-                }
-            }
-            
-            HFASSERT([hfindexset isEqualToNSIndexSet:nsindexset]);
-        }
     }
 }
 

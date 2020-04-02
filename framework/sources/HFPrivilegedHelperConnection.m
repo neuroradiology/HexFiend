@@ -18,29 +18,12 @@
 @implementation HFPrivilegedHelperConnection
 
 + (instancetype)sharedConnection {
-    static id shared = nil;
+    static HFPrivilegedHelperConnection *shared = nil;
     if (!shared) shared = [[self alloc] init];
+#if HF_NO_PRIVILEGED_FILE_OPERATIONS
+    shared.disabled = YES;
+#endif
     return shared;
-}
-
-static NSString *read_line(FILE *file) {
-    NSMutableString *result = nil;
-    char buffer[256];
-    BOOL done = NO;
-    while (done == NO && fgets(buffer, sizeof buffer, file)) {
-        char *endPtr = strchr(buffer, '\n');
-        if (endPtr) {
-            *endPtr = '\0';
-            done = YES;
-        }
-        if (! result) {
-            result = [NSMutableString stringWithUTF8String:buffer];
-        }
-        else {
-            CFStringAppendCString((CFMutableStringRef)result, buffer, kCFStringEncodingUTF8);
-        }
-    }
-    return result;
 }
 
 - (BOOL)readBytes:(void *)bytes range:(HFRange)range process:(pid_t)process error:(NSError **)error {
@@ -129,7 +112,17 @@ static NSString *read_line(FILE *file) {
     if (childReceiveMachPort == nil) {
         NSError *oops = nil;
         if (! [self launchAndConnect:&oops]) {
-            if (oops) [NSApp presentError:oops];
+            if (oops) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    @autoreleasepool {
+                        HFASSERT_MAIN_THREAD();
+                        NSAlert *alert = [[NSAlert alloc] init];
+                        alert.messageText = NSLocalizedString(@"Failed to launch and connect helper.", "");
+                        alert.informativeText = oops.localizedDescription;
+                        (void)[alert runModal];
+                    }
+                });
+            }
         }
     }
     return [childReceiveMachPort isValid];
@@ -146,7 +139,6 @@ static NSString *read_line(FILE *file) {
     
     /* Guess not. This is probably the first connection. */
     [childReceiveMachPort invalidate];
-    [childReceiveMachPort release];
     childReceiveMachPort = nil;
     int err = 0;
     
@@ -196,8 +188,7 @@ static NSString *read_line(FILE *file) {
         CFErrorRef localError = NULL;
 		err = ! SMJobBless(kSMDomainSystemLaunchd, label, authRef, (CFErrorRef *)&localError);
         if (localError) {
-            if (error) *error = [[(id)localError retain] autorelease];
-            CFRelease(localError);
+            if (error) *error = (__bridge_transfer NSError*)localError;
         }
 	}
     
@@ -237,4 +228,3 @@ static NSString *read_line(FILE *file) {
 }
 
 @end
-

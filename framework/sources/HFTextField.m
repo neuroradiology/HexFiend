@@ -49,14 +49,6 @@
     return self;
 }
 
-- (void)dealloc {
-    [dataController release];
-    [layoutRepresenter release];
-    [hexRepresenter release];
-    [textRepresenter release];
-    [super dealloc];
-}
-
 - (void)resizeSubviewsWithOldSize:(NSSize)oldSize {
     USE(oldSize);
     [self positionLayoutView];
@@ -167,11 +159,11 @@
     }
 }
 
-- (void)setStringEncoding:(NSStringEncoding)encoding {
+- (void)setStringEncoding:(HFStringEncoding *)encoding {
     [textRepresenter setEncoding:encoding];
 }
 
-- (NSStringEncoding)stringEncoding {
+- (HFStringEncoding *)stringEncoding {
     return [textRepresenter encoding];
 }
 
@@ -183,5 +175,17 @@
     return [dataController editable];
 }
 
+- (void)selectAll:(id)sender {
+    HFTextRepresenter *rep = nil;
+    if ([self usesHexArea]) {
+        rep = hexRepresenter;
+    } else if ([self usesTextArea]) {
+        rep = textRepresenter;
+    } else {
+        HFASSERT(0);
+        NSBeep();
+    }
+    [rep selectAll:sender];
+}
 
 @end

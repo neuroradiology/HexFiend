@@ -54,8 +54,9 @@
 }
 
 - (void)setUpFileMultipleViewIntoView:(NSView *)containerView {
-    /* We're going to show the contents of mach_kernel */
-    HFFileReference *reference = [[HFFileReference alloc] initWithPath:@"/mach_kernel" error:NULL];
+    /* We're going to show the contents of our Info.plist */
+    NSString *infoplist = [[[NSBundle mainBundle] bundlePath] stringByAppendingPathComponent:@"Contents/Info.plist"];
+    HFFileReference *reference = [[HFFileReference alloc] initWithPath:infoplist error:NULL];
     
     /* Make a controller to hook everything up, and then configure it a bit. */
     fileController = [[HFController alloc] init];
@@ -186,7 +187,7 @@
 
 @synthesize label = label, explanation = explanation;
 
-+ (id)exampleWithLabel:(NSString *)someLabel explanation:(NSString *)someExplanation {
++ (instancetype)exampleWithLabel:(NSString *)someLabel explanation:(NSString *)someExplanation {
     FiendlingExample *example = [[self  alloc] init];
     example->label = [someLabel copy];
     example->explanation = [someExplanation copy];
